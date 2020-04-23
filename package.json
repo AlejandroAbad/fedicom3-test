@@ -1,0 +1,15 @@
+{
+  "name": "fedicom3-test",
+  "version": "1.0.0",
+  "description": "Pruebas unitarias del servicio Fedicom3",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "nodemon index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^2.0.3"
+  }
+}
