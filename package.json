@@ -4,12 +4,17 @@
   "description": "Pruebas unitarias del servicio Fedicom3",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "nodemon index.js"
+    "start": "mocha index.js"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "nodemon": "^2.0.3"
+  },
+  "dependencies": {
+    "chai": "^4.2.0",
+    "chai-http": "^4.3.0",
+    "clone": "^2.1.2",
+    "mocha": "^7.1.1"
   }
 }
