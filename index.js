@@ -16,6 +16,31 @@ const LOGIN = {
 		noCache: true
 	}
 }
+const PEDIDO = {
+	codigoCliente: "13676",
+	numeroPedidoOrigen: "CAMBIAME O ME REPETIRÉ",
+	tipoPedido: "028",
+	"lineas": [
+		{
+			"orden": 1,
+			"codigoArticulo": "6533093",
+			"cantidad": 1,
+			"servicioDemorado": false
+		},
+		{
+			"orden": 2,
+			"codigoArticulo": "159323",
+			"cantidad": 1,
+			"servicioDemorado": false
+		},
+		{
+			"orden": 3,
+			"codigoArticulo": "8470001593245",
+			"cantidad": 1,
+			"servicioDemorado": false
+		}
+	]
+}
 
 
 // const assert = require('assert');
@@ -31,25 +56,44 @@ const clone = require('clone');
 chai.use(chaiHttp);
 
 
+// VARIABLES PROCESO
 
-const GET = (endpoint) => {
-	return chai.request(URL_SERVICIO)
-		.get(endpoint)
-		.set('Software-ID', SOFTWARE_ID)
+const TOKEN = {
+	FARMACIA: '',
+	TR: '',
+	TG: '',
+	TP: ''
 }
 
-const POST = (endpoint, body) => {
-	return chai.request(URL_SERVICIO)
+
+
+const GET = (endpoint, token) => {
+	let c = chai.request(URL_SERVICIO)
+		.get(endpoint)
+		.set('Software-ID', SOFTWARE_ID)
+
+	if (token) c.set('Authorization', 'Bearer ' + token)
+	return c;
+}
+
+const POST = (endpoint, body, token) => {
+	let c = chai.request(URL_SERVICIO)
 		.post(endpoint)
 		.set('Software-ID', SOFTWARE_ID)
 		.send(body)
+
+	if (token) c.set('Authorization', 'Bearer ' + token)
+	return c;
 }
 
-const PUT = (endpoint, body) => {
-	return chai.request(URL_SERVICIO)
+const PUT = (endpoint, body, token) => {
+	let c = chai.request(URL_SERVICIO)
 		.put(endpoint)
 		.set('Software-ID', SOFTWARE_ID)
 		.send(body)
+
+	if (token) c.set('Authorization', 'Bearer ' + token)
+	return c;
 }
 
 describe('AUTENTICACION', () => {
@@ -103,8 +147,6 @@ describe('AUTENTICACION', () => {
 		});
 	});
 
-
-
 	describe('Dominio Fedicom', () => {
 
 		let MENSAJE = clone(LOGIN.FARMACIA);
@@ -114,6 +156,8 @@ describe('AUTENTICACION', () => {
 			POST(ENDPOINT, body).end((err, res) => {
 				expectStatus(res, 201);
 				expectBody(res).to.have.property('auth_token');
+				TOKEN.FARMACIA = res.body.auth_token;
+				console.log('Almacenado token de farmacia: ' + TOKEN.FARMACIA);
 				done();
 			});
 		});
@@ -172,7 +216,7 @@ describe('AUTENTICACION', () => {
 				done();
 			});
 		});
-		['HEFAME', 'empleado', 'FMAS', 'PORTAL_HEFAME', 'SAP_BG'].forEach( nombreDominio => {
+		['HEFAME', 'empleado', 'FMAS', 'PORTAL_HEFAME', 'SAP_BG'].forEach(nombreDominio => {
 			it('Dominio [' + nombreDominio + '], user/pass validos', (done) => {
 				let body = clone(MENSAJE);
 				body.domain = nombreDominio;
@@ -205,6 +249,8 @@ describe('AUTENTICACION', () => {
 				POST('/authenticate', body).end((err, res) => {
 					expectStatus(res, 201);
 					expectBody(res).to.have.property('auth_token');
+					TOKEN[tipoTransfer] = res.body.auth_token;
+					console.log('Almacenado token tipo [' + tipoTransfer + '] : ' + TOKEN[tipoTransfer]);
 					done();
 				});
 
@@ -249,6 +295,30 @@ describe('AUTENTICACION', () => {
 
 	});
 
-
-
 });
+
+
+describe('PEDIDOS', () => {
+	for (let tipoToken in TOKEN) {
+
+		describe('TOKEN ' + tipoToken, () => {
+
+			let ENDPOINT = '/pedidos';
+			let MENSAJE = clone(PEDIDO);
+
+			it('Pedido estandard', (done) => {
+
+				let body = clone(MENSAJE);
+				body.numeroPedidoOrigen = "" + Math.random();
+				POST(ENDPOINT, body, TOKEN[tipoToken]).end((err, res) => {
+					expectStatus(res, 201);
+					expectBody(res).to.have.property('numeroPedido');
+					done();
+				});
+
+			})
+
+		});
+
+	}
+})
