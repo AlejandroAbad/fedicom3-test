@@ -55,17 +55,21 @@ const expectBody = (res) => expect(res.body, res.header['x-txid']);
 const clone = require('clone');
 chai.use(chaiHttp);
 
+const VALORES_TOCAWEBOS = [
+	true, false, '', ' ', '		', /^a/g, {}, [], { a: true }, [0, '2'], null, undefined, 0, -1, NaN
+]
+
+const DOMINIOS_NO_TOKENS = [
+	"empleado", "FMAS", "PORTAL_HEFAME", "SAP_BG", "INTERFEDICOM"
+]
 
 // VARIABLES PROCESO
-
 const TOKEN = {
 	FARMACIA: '',
 	TR: '',
 	TG: '',
 	TP: ''
 }
-
-
 
 const GET = (endpoint, token) => {
 	let c = chai.request(URL_SERVICIO)
@@ -103,7 +107,7 @@ describe('AUTENTICACION', () => {
 	describe('Forzado de errores básicos', () => {
 
 		let MENSAJE = clone(LOGIN.FARMACIA);
-		it('JSON vacio', (done) => {
+		it('JSON vacio (sin usuario ni password)', (done) => {
 			let body = {};
 			POST(ENDPOINT, body).end((err, res) => {
 				expectStatus(res, 400);
@@ -114,7 +118,8 @@ describe('AUTENTICACION', () => {
 				done();
 			});
 		});
-		it('Sin usuario', (done) => {
+
+		it(`Campo USUARIO no existe`, (done) => {
 			let body = clone(MENSAJE);
 			delete body.user;
 			POST(ENDPOINT, body).end((err, res) => {
@@ -125,7 +130,23 @@ describe('AUTENTICACION', () => {
 				done();
 			});
 		});
-		it('Sin password', (done) => {
+
+		// Probando valores raros en el campo 'username'
+		VALORES_TOCAWEBOS.forEach((vMierda, iMierda) => {
+			it(`Valores de mierda en el USUARIO #${iMierda}: [${vMierda}]`, (done) => {
+				let body = clone(MENSAJE);
+				body.user = vMierda;
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 400);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-003", descripcion: "El parámetro \"user\" es obligatorio" }
+					]);
+					done();
+				});
+			});
+		});
+
+		it(`Campo PASSWORD no existe`, (done) => {
 			let body = clone(MENSAJE);
 			delete body.password;
 			POST(ENDPOINT, body).end((err, res) => {
@@ -136,6 +157,37 @@ describe('AUTENTICACION', () => {
 				done();
 			});
 		});
+
+		VALORES_TOCAWEBOS.forEach((vMierda, iMierda) => {
+			it(`Valores de mierda en el PASSWORD #${iMierda}: [${vMierda}]`, (done) => {
+				let body = clone(MENSAJE);
+				body.password = vMierda;
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 400);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-004", descripcion: "El parámetro \"password\" es obligatorio" }
+					]);
+					done();
+				});
+			});
+		});
+
+		// Dominios para los que no se permite la generación de tokens
+		DOMINIOS_NO_TOKENS.forEach((nombreDominio, indice) => {
+			it(`Dominio no apto para generar TOKENS #${indice}: [${nombreDominio}]`, (done) => {
+				let body = clone(MENSAJE);
+				body.domain = nombreDominio;
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 400);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-999", descripcion: "No se permite la expedición de tokens para el dominio" }
+					]);
+					done();
+				});
+			});
+		});
+
+
 		it('Petición PUT', (done) => {
 			PUT(ENDPOINT).end((err, res) => {
 				expectStatus(res, 404);
@@ -145,159 +197,224 @@ describe('AUTENTICACION', () => {
 				done();
 			});
 		});
-	});
 
-	describe('Dominio Fedicom', () => {
-
-		let MENSAJE = clone(LOGIN.FARMACIA);
-
-		it('Login OK', (done) => {
-			let body = clone(MENSAJE);
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 201);
-				expectBody(res).to.have.property('auth_token');
-				TOKEN.FARMACIA = res.body.auth_token;
-				console.log('Almacenado token de farmacia: ' + TOKEN.FARMACIA);
-				done();
-			});
-		});
-		it('Login Incorrecto', (done) => {
-			let body = clone(MENSAJE);
-			body.password = '1234';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 401);
+		it('Petición GET', (done) => {
+			GET(ENDPOINT).end((err, res) => {
+				expectStatus(res, 404);
 				expectBody(res).to.deep.equal([
-					{ codigo: "AUTH-005", descripcion: "Usuario o contraseña inválidos" }
+					{ codigo: "HTTP-404", descripcion: "No existe el endpoint indicado." }
 				]);
 				done();
 			});
 		});
-		it('Usuario con caracteres incorrectos al final', (done) => {
-			let body = clone(MENSAJE);
-			body.user += 'XX';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 401);
-				done();
-			});
-		});
-		it('Dominio inexistente, usuario valido', (done) => {
-			let body = clone(MENSAJE);
-			body.domain = 'XXXXXX';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 201);
-				expectBody(res).to.have.property('auth_token');
-				done();
-			});
-		});
-		it('Dominio inexistente, usuario NO valido', (done) => {
-			let body = clone(MENSAJE);
-			body.domain = 'XXXXXX';
-			body.password = '1234';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 401);
-				done();
-			});
-		});
-		it('Dominio TRANSFER, usuario valido (caso especial, debe autenticar)', (done) => {
-			let body = clone(MENSAJE);
-			body.domain = 'transfer_laboratorio';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 201);
-				expectBody(res).to.have.property('auth_token');
-				done();
-			});
-		});
-		it('Dominio TRANSFER, usuario NO valido (caso especial, NO debe autenticar)', (done) => {
-			let body = clone(MENSAJE);
-			body.domain = 'transfer_laboratorio';
-			body.password = '1234';
-			POST(ENDPOINT, body).end((err, res) => {
-				expectStatus(res, 401);
-				done();
-			});
-		});
-		['HEFAME', 'empleado', 'FMAS', 'PORTAL_HEFAME', 'SAP_BG'].forEach(nombreDominio => {
-			it('Dominio [' + nombreDominio + '], user/pass validos', (done) => {
-				let body = clone(MENSAJE);
-				body.domain = nombreDominio;
-				POST(ENDPOINT, body).end((err, res) => {
-					expectStatus(res, 401);
-					done();
-				});
-			});
-			it('Dominio [' + nombreDominio + '], contraseña incorrecta', (done) => {
-				let body = clone(MENSAJE);
-				body.domain = nombreDominio;
-				body.password = '1234';
-				POST(ENDPOINT, body).end((err, res) => {
-					expectStatus(res, 401);
-					done();
-				});
-			});
-		});
-
 	});
 
-	describe('Dominio Transfer', () => {
+	[true, false].forEach((usarCache) => {
+		describe(`Dominio Fedicom - Caché de usuarios=${usarCache}`, () => {
 
-		let MENSAJE = clone(LOGIN.TRANSFER);
+			let MENSAJE = clone(LOGIN.FARMACIA);
+			MENSAJE.noCache = !usarCache;
 
-		['TR', 'TG', 'TP'].forEach(tipoTransfer => {
-			it('Transfer tipo [' + tipoTransfer + ']', (done) => {
+			it('Login OK', (done) => {
 				let body = clone(MENSAJE);
-				body.user = tipoTransfer + body.user;
-				POST('/authenticate', body).end((err, res) => {
+				POST(ENDPOINT, body).end((err, res) => {
 					expectStatus(res, 201);
 					expectBody(res).to.have.property('auth_token');
-					TOKEN[tipoTransfer] = res.body.auth_token;
-					console.log('Almacenado token tipo [' + tipoTransfer + '] : ' + TOKEN[tipoTransfer]);
+					TOKEN.FARMACIA = res.body.auth_token;
+					//console.log('>> Almacenado token de farmacia: ' + TOKEN.FARMACIA);
 					done();
 				});
-
 			});
-			it('Transfer tipo [' + tipoTransfer + '] con contraseña incorrecta', (done) => {
-
+			if (usarCache) {
+				it('Login OK - Repetición: Fuerza uso de la caché', (done) => {
+					let body = clone(MENSAJE);
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 201);
+						expectBody(res).to.have.property('auth_token');
+						TOKEN.FARMACIA = res.body.auth_token;
+						//console.log('>> Almacenado token de farmacia: ' + TOKEN.FARMACIA);
+						done();
+					});
+				});
+			}
+			it(`Login Incorrecto${usarCache ? ' - Falla en caché, luego consulta a SAP' : ''}`, (done) => {
 				let body = clone(MENSAJE);
-				body.user = tipoTransfer + body.user;
 				body.password = '1234';
-				POST('/authenticate', body).end((err, res) => {
+				POST(ENDPOINT, body).end((err, res) => {
 					expectStatus(res, 401);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-005", descripcion: "Usuario o contraseña inválidos" }
+					]);
 					done();
 				});
-
 			});
-			it('Transfer tipo [' + tipoTransfer + '] con caracteres incorrectos al final del nombre del usuario', (done) => {
-
+			it('Usuario con caracteres incorrectos al final', (done) => {
 				let body = clone(MENSAJE);
-				body.user = tipoTransfer + body.user + 'XX';
-				POST('/authenticate', body).end((err, res) => {
+				body.user += 'XX';
+				POST(ENDPOINT, body).end((err, res) => {
 					expectStatus(res, 401);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-005", descripcion: "Usuario o contraseña inválidos" }
+					]);
 					done();
 				});
-
 			});
-
-		})
-
-		let tiposMalos = ['T', 'TX', 'TY', 'TT', 'T ', 'XX', 'X', '', 'XXX', 'XXXXXXXXXXXXXXXXX', ' ', '    ', '              ', 'XTR'];
-		tiposMalos.forEach(tipoTransfer => {
-			it('Transfer de tipo incorrecto [' + tipoTransfer + ']', (done) => {
+			it('Usuario con caracteres de espacios al inicio', (done) => {
 				let body = clone(MENSAJE);
-				body.user = tipoTransfer + body.user
-				POST('/authenticate', body).end((err, res) => {
+				body.user = '  ' + body.user;
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 201);
+					expectBody(res).to.have.property('auth_token');
+					done();
+				});
+			});
+			it('Usuario con caracteres de espacios al final', (done) => {
+				let body = clone(MENSAJE);
+				body.user += '  ';
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 201);
+					expectBody(res).to.have.property('auth_token');
+					done();
+				});
+			});
+			it('Dominio inexistente, usuario valido', (done) => {
+				let body = clone(MENSAJE);
+				body.domain = 'XXXXXX';
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 201);
+					expectBody(res).to.have.property('auth_token');
+					done();
+				});
+			});
+			it('Dominio inexistente, contraseña incorrecta', (done) => {
+				let body = clone(MENSAJE);
+				body.domain = 'XXXXXX';
+				body.password = '1234';
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 401);
+					expectBody(res).to.deep.equal([
+						{ codigo: "AUTH-005", descripcion: "Usuario o contraseña inválidos" }
+					]);
+					done();
+				});
+			});
+			it('Dominio TRANSFER, con usuario NO TRANSFER - usuario valido (caso especial, debe autenticar)', (done) => {
+				// A la hora de auntenticar, el dominio "FEDICOM" y "transfer_laboratorio" se autentican de la misma manera.
+				let body = clone(MENSAJE);
+				body.domain = 'transfer_laboratorio';
+				POST(ENDPOINT, body).end((err, res) => {
+					expectStatus(res, 201);
+					expectBody(res).to.have.property('auth_token');
+					done();
+				});
+			});
+			it('Dominio TRANSFER, con usuario NO TRANSFER - usuario NO valido (caso especial, NO debe autenticar)', (done) => {
+				let body = clone(MENSAJE);
+				body.domain = 'transfer_laboratorio';
+				body.password = '1234';
+				POST(ENDPOINT, body).end((err, res) => {
 					expectStatus(res, 401);
 					done();
 				});
 			});
-		})
 
 
-
+		});
 	});
 
+
+	[true, false].forEach((usarCache) => {
+		describe(`Dominio Transfer - Caché de usuarios=${usarCache}`, () => {
+
+			let MENSAJE = clone(LOGIN.TRANSFER);
+			MENSAJE.noCache = !usarCache;
+
+			['TR', 'TG', 'TP'].forEach(tipoTransfer => {
+				it('Transfer tipo [' + tipoTransfer + ']', (done) => {
+					let body = clone(MENSAJE);
+					body.user = tipoTransfer + body.user;
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 201);
+						expectBody(res).to.have.property('auth_token');
+						TOKEN[tipoTransfer] = res.body.auth_token;
+						//console.log('Almacenado token tipo [' + tipoTransfer + '] : ' + TOKEN[tipoTransfer]);
+						done();
+					});
+
+				});
+
+				if (usarCache) {
+					it('Transfer tipo [' + tipoTransfer + '] - Repetición: Fuerza uso de la caché', (done) => {
+						let body = clone(MENSAJE);
+						body.user = tipoTransfer + body.user;
+						POST(ENDPOINT, body).end((err, res) => {
+							expectStatus(res, 201);
+							expectBody(res).to.have.property('auth_token');
+							TOKEN[tipoTransfer] = res.body.auth_token;
+							//console.log('Almacenado token tipo [' + tipoTransfer + '] : ' + TOKEN[tipoTransfer]);
+							done();
+						});
+
+					});
+				}
+
+				it('Transfer tipo [' + tipoTransfer + '] con contraseña incorrecta', (done) => {
+
+					let body = clone(MENSAJE);
+					body.user = tipoTransfer + body.user;
+					body.password = '1234';
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 401);
+						done();
+					});
+
+				});
+				it('Transfer tipo [' + tipoTransfer + '] con caracteres incorrectos al final del nombre del usuario', (done) => {
+
+					let body = clone(MENSAJE);
+					body.user = tipoTransfer + body.user + 'XX';
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 401);
+						done();
+					});
+
+				});
+
+			})
+
+			// Transfers malos
+			let tiposMalos = ['T', ' T', 'XX', 'X', '', 'XXX', 'XXXXXXXXXXXXXXXXX', ' ', '    ', '              ', 'XTR'];
+			tiposMalos.forEach(tipoTransfer => {
+				it('Transfer de tipo incorrecto [' + tipoTransfer + ']', (done) => {
+					let body = clone(MENSAJE);
+					body.user = tipoTransfer + body.user
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 401);
+						done();
+					});
+				});
+			});
+
+			// Estos transfer son malos, pero SAP los da como buenos
+			let tiposMalosPeroNo = ['TX', 'TY', 'TT', 'T ', ' T '];
+			tiposMalosPeroNo.forEach(tipoTransfer => {
+				it('Transfer de tipo incorrecto pero que SAP da bueno [' + tipoTransfer + ']', (done) => {
+					let body = clone(MENSAJE);
+					body.user = tipoTransfer + body.user
+					POST(ENDPOINT, body).end((err, res) => {
+						expectStatus(res, 201);
+						expectBody(res).to.have.property('auth_token');
+						done();
+					});
+				});
+			})
+
+		});
+
+	});
 });
 
-
+/*
 describe('PEDIDOS', () => {
 	for (let tipoToken in TOKEN) {
 
@@ -322,3 +439,4 @@ describe('PEDIDOS', () => {
 
 	}
 })
+*/
